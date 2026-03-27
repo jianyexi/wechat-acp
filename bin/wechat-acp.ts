@@ -23,6 +23,7 @@ import {
   resolveAgentSelection,
 } from "../src/config.js";
 import type { WeChatAcpConfig } from "../src/config.js";
+import { installService, uninstallService, serviceStatus } from "../src/service.js";
 
 function usage(): void {
   const presets = listBuiltInAgents()
@@ -37,6 +38,8 @@ Usage:
   wechat-acp agents                        List built-in agent presets
   wechat-acp stop                          Stop a running daemon
   wechat-acp status                        Check daemon status
+  wechat-acp install --agent <preset|cmd>  Install as auto-start service
+  wechat-acp uninstall                     Remove auto-start service
 
 Options:
   --agent <value>     Built-in preset name or raw agent command
@@ -173,18 +176,46 @@ function handleStop(config: WeChatAcpConfig): void {
 function handleStatus(config: WeChatAcpConfig): void {
   const pidFile = config.daemon.pidFile;
   if (!fs.existsSync(pidFile)) {
-    console.log("Not running");
-    return;
+    console.log("Daemon: not running");
+  } else {
+    const pid = parseInt(fs.readFileSync(pidFile, "utf-8").trim(), 10);
+    try {
+      process.kill(pid, 0);
+      console.log(`Daemon: running (PID ${pid})`);
+    } catch {
+      console.log(`Daemon: not running (stale PID ${pid})`);
+      fs.unlinkSync(pidFile);
+    }
+  }
+}
+
+function handleInstall(
+  args: ReturnType<typeof parseArgs>,
+  config: WeChatAcpConfig,
+): void {
+  const agentSelection = args.agent ?? config.agent.preset;
+  if (!agentSelection && !config.agent.command) {
+    console.error("Error: --agent is required for install\n");
+    console.error("Usage: wechat-acp install --agent <preset|command> [--cwd <dir>]");
+    process.exit(1);
   }
 
-  const pid = parseInt(fs.readFileSync(pidFile, "utf-8").trim(), 10);
-  try {
-    process.kill(pid, 0); // test if process exists
-    console.log(`Running (PID ${pid})`);
-  } catch {
-    console.log(`Not running (stale PID ${pid})`);
-    fs.unlinkSync(pidFile);
+  if (agentSelection) {
+    const resolved = resolveAgentSelection(agentSelection, config.agents);
+    config.agent.command = resolved.command;
+    config.agent.args = resolved.args;
   }
+
+  const cwd = args.cwd ? path.resolve(args.cwd) : config.agent.cwd;
+
+  installService({
+    agent: agentSelection ?? [config.agent.command, ...config.agent.args].join(" "),
+    cwd,
+    configFile: args.configFile,
+    idleTimeout: args.idleTimeout,
+    maxSessions: args.maxSessions,
+    showThoughts: args.showThoughts || undefined,
+  });
 }
 
 function daemonize(config: WeChatAcpConfig): void {
@@ -251,6 +282,14 @@ async function main(): Promise<void> {
   }
   if (args.command === "status") {
     handleStatus(config);
+    serviceStatus();
+    return;
+  }
+  if (args.command === "install") {
+    return handleInstall(args, config);
+  }
+  if (args.command === "uninstall") {
+    uninstallService();
     return;
   }
 
