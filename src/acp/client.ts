@@ -9,6 +9,13 @@
 import fs from "node:fs";
 import type * as acp from "@agentclientprotocol/sdk";
 
+export interface MediaBlock {
+  type: "image" | "file" | "video";
+  data: string;       // base64
+  mimeType: string;
+  fileName?: string;
+}
+
 export interface WeChatAcpClientOpts {
   sendTyping: () => Promise<void>;
   onThoughtFlush: (text: string) => Promise<void>;
@@ -18,6 +25,7 @@ export interface WeChatAcpClientOpts {
 
 export class WeChatAcpClient implements acp.Client {
   private chunks: string[] = [];
+  private mediaBlocks: MediaBlock[] = [];
   private thoughtChunks: string[] = [];
   private opts: WeChatAcpClientOpts;
   private lastTypingAt = 0;
@@ -62,6 +70,13 @@ export class WeChatAcpClient implements acp.Client {
         await this.maybeFlushThoughts();
         if (update.content.type === "text") {
           this.chunks.push(update.content.text);
+        } else if (update.content.type === "image") {
+          const imgContent = update.content as { type: "image"; data: string; mimeType: string };
+          this.mediaBlocks.push({
+            type: "image",
+            data: imgContent.data,
+            mimeType: imgContent.mimeType ?? "image/jpeg",
+          });
         }
         // Throttle typing indicators
         await this.maybeSendTyping();
@@ -136,13 +151,15 @@ export class WeChatAcpClient implements acp.Client {
     }
   }
 
-  /** Get accumulated text and reset the buffer. Also flushes any remaining thoughts. */
-  async flush(): Promise<string> {
+  /** Get accumulated text and media, then reset the buffers. Also flushes any remaining thoughts. */
+  async flush(): Promise<{ text: string; media: MediaBlock[] }> {
     await this.maybeFlushThoughts();
     const text = this.chunks.join("");
+    const media = [...this.mediaBlocks];
     this.chunks = [];
+    this.mediaBlocks = [];
     this.lastTypingAt = 0;
-    return text;
+    return { text, media };
   }
 
   private async maybeFlushThoughts(): Promise<void> {

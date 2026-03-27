@@ -7,7 +7,7 @@
 
 import type { ChildProcess } from "node:child_process";
 import type * as acp from "@agentclientprotocol/sdk";
-import { WeChatAcpClient } from "./client.js";
+import { WeChatAcpClient, type MediaBlock } from "./client.js";
 import { spawnAgent, killAgent, type AgentProcessInfo } from "./agent-manager.js";
 
 export interface PendingMessage {
@@ -35,7 +35,7 @@ export interface SessionManagerOpts {
   maxConcurrentUsers: number;
   showThoughts: boolean;
   log: (msg: string) => void;
-  onReply: (userId: string, contextToken: string, text: string) => Promise<void>;
+  onReply: (userId: string, contextToken: string, text: string, media?: MediaBlock[]) => Promise<void>;
   sendTyping: (userId: string, contextToken: string) => Promise<void>;
 }
 
@@ -169,20 +169,21 @@ export class SessionManager {
             prompt: pending.prompt,
           });
 
-          // Collect accumulated text
-          let replyText = await session.client.flush();
+          // Collect accumulated text and media
+          const { text: replyText, media: replyMedia } = await session.client.flush();
+          let finalText = replyText;
 
           if (result.stopReason === "cancelled") {
-            replyText += "\n[cancelled]";
+            finalText += "\n[cancelled]";
           } else if (result.stopReason === "refusal") {
-            replyText += "\n[agent refused to continue]";
+            finalText += "\n[agent refused to continue]";
           }
 
-          this.opts.log(`[${session.userId}] Agent done (${result.stopReason}), reply ${replyText.length} chars`);
+          this.opts.log(`[${session.userId}] Agent done (${result.stopReason}), reply ${finalText.length} chars, ${replyMedia.length} media`);
 
           // Send reply back to WeChat
-          if (replyText.trim()) {
-            await this.opts.onReply(session.userId, pending.contextToken, replyText);
+          if (finalText.trim() || replyMedia.length > 0) {
+            await this.opts.onReply(session.userId, pending.contextToken, finalText, replyMedia.length > 0 ? replyMedia : undefined);
           }
         } catch (err) {
           this.opts.log(`[${session.userId}] Agent prompt error: ${String(err)}`);

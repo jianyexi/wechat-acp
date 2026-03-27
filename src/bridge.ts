@@ -7,7 +7,8 @@
 
 import { login, loadToken, type TokenData } from "./weixin/auth.js";
 import { startMonitor } from "./weixin/monitor.js";
-import { sendTextMessage, splitText } from "./weixin/send.js";
+import { sendTextMessage, sendImageMessage, sendFileMessage, sendVideoMessage, splitText } from "./weixin/send.js";
+import type { MediaBlock } from "./acp/client.js";
 import { sendTyping, getConfig } from "./weixin/api.js";
 import { TypingStatus, MessageType } from "./weixin/types.js";
 import type { WeixinMessage } from "./weixin/types.js";
@@ -66,7 +67,7 @@ export class WeChatAcpBridge {
       maxConcurrentUsers: this.config.session.maxConcurrentUsers,
       showThoughts: this.config.agent.showThoughts,
       log: this.log,
-      onReply: (userId, contextToken, text) => this.sendReply(userId, contextToken, text),
+      onReply: (userId, contextToken, text, media) => this.sendReply(userId, contextToken, text, media),
       sendTyping: (userId, contextToken) => this.sendTypingIndicator(userId, contextToken),
     });
     this.sessionManager.start();
@@ -123,16 +124,45 @@ export class WeChatAcpBridge {
     await this.sessionManager!.enqueue(userId, { prompt, contextToken });
   }
 
-  private async sendReply(userId: string, contextToken: string, text: string): Promise<void> {
-    const formatted = formatForWeChat(text);
-    const segments = splitText(formatted, TEXT_CHUNK_LIMIT);
+  private async sendReply(userId: string, contextToken: string, text: string, media?: MediaBlock[]): Promise<void> {
+    // Send text segments
+    if (text.trim()) {
+      const formatted = formatForWeChat(text);
+      const segments = splitText(formatted, TEXT_CHUNK_LIMIT);
 
-    for (const segment of segments) {
-      await sendTextMessage(userId, segment, {
+      for (const segment of segments) {
+        await sendTextMessage(userId, segment, {
+          baseUrl: this.tokenData!.baseUrl,
+          token: this.tokenData!.token,
+          contextToken,
+        });
+      }
+    }
+
+    // Send media blocks
+    if (media?.length) {
+      const mediaSendOpts = {
         baseUrl: this.tokenData!.baseUrl,
         token: this.tokenData!.token,
         contextToken,
-      });
+        cdnBaseUrl: this.config.wechat.cdnBaseUrl,
+      };
+
+      for (const block of media) {
+        try {
+          const buffer = Buffer.from(block.data, "base64");
+          if (block.type === "image") {
+            await sendImageMessage(userId, buffer, mediaSendOpts);
+          } else if (block.type === "file") {
+            await sendFileMessage(userId, buffer, block.fileName ?? "file", mediaSendOpts);
+          } else if (block.type === "video") {
+            await sendVideoMessage(userId, buffer, mediaSendOpts);
+          }
+          this.log(`Sent ${block.type} to ${userId} (${buffer.length} bytes)`);
+        } catch (err) {
+          this.log(`Failed to send ${block.type} to ${userId}: ${String(err)}`);
+        }
+      }
     }
 
     // Cancel typing indicator after reply is sent
