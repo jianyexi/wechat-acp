@@ -8,6 +8,7 @@
 
 import fs from "node:fs";
 import type * as acp from "@agentclientprotocol/sdk";
+import { formatThoughtsForWeChat } from "../adapter/outbound.js";
 
 export interface MediaBlock {
   type: "image" | "file" | "video";
@@ -168,7 +169,7 @@ export class WeChatAcpClient implements acp.Client {
     this.thoughtChunks = [];
     if (thoughtText.trim()) {
       try {
-        await this.opts.onThoughtFlush(`💭 [Thinking]\n${thoughtText}`);
+        await this.opts.onThoughtFlush(formatThoughtsForWeChat(thoughtText));
       } catch {
         // best effort
       }
