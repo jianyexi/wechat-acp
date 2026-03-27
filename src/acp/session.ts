@@ -7,6 +7,7 @@
 
 import type { ChildProcess } from "node:child_process";
 import type * as acp from "@agentclientprotocol/sdk";
+import type { McpServerConfig } from "../config.js";
 import { WeChatAcpClient, type MediaBlock } from "./client.js";
 import { spawnAgent, killAgent, type AgentProcessInfo } from "./agent-manager.js";
 
@@ -31,6 +32,7 @@ export interface SessionManagerOpts {
   agentArgs: string[];
   agentCwd: string;
   agentEnv?: Record<string, string>;
+  mcpServers?: McpServerConfig[];
   idleTimeoutMs: number;
   maxConcurrentUsers: number;
   showThoughts: boolean;
@@ -119,6 +121,7 @@ export class SessionManager {
       args: this.opts.agentArgs,
       cwd: this.opts.agentCwd,
       env: this.opts.agentEnv,
+      mcpServers: this.opts.mcpServers,
       client,
       log: (msg) => this.opts.log(`[${userId}] ${msg}`),
     });

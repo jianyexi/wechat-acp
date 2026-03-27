@@ -7,6 +7,7 @@ import { Writable, Readable } from "node:stream";
 import * as acp from "@agentclientprotocol/sdk";
 import packageJson from "../../package.json" with { type: "json" };
 import type { WeChatAcpClient } from "./client.js";
+import type { McpServerConfig } from "../config.js";
 
 export interface AgentProcessInfo {
   process: ChildProcess;
@@ -14,15 +15,39 @@ export interface AgentProcessInfo {
   sessionId: string;
 }
 
+/**
+ * Convert our simplified McpServerConfig to the ACP SDK's McpServer type.
+ */
+function toAcpMcpServer(cfg: McpServerConfig): acp.McpServer {
+  if ("command" in cfg) {
+    // Stdio transport
+    return {
+      name: cfg.name,
+      command: cfg.command,
+      args: cfg.args ?? [],
+      env: Object.entries(cfg.env ?? {}).map(([name, value]) => ({ name, value })),
+    };
+  }
+  // HTTP or SSE transport
+  const headers = Object.entries(cfg.headers ?? {}).map(([name, value]) => ({ name, value }));
+  return {
+    type: cfg.type,
+    name: cfg.name,
+    url: cfg.url,
+    headers,
+  };
+}
+
 export async function spawnAgent(params: {
   command: string;
   args: string[];
   cwd: string;
   env?: Record<string, string>;
+  mcpServers?: McpServerConfig[];
   client: WeChatAcpClient;
   log: (msg: string) => void;
 }): Promise<AgentProcessInfo> {
-  const { command, args, cwd, env, client, log } = params;
+  const { command, args, cwd, env, mcpServers, client, log } = params;
 
   // On Windows, shell mode avoids EINVAL/ENOENT for command shims like npx/claude/gemini.
   const useShell = process.platform === "win32";
@@ -74,10 +99,14 @@ export async function spawnAgent(params: {
   log(`ACP initialized (protocol v${initResult.protocolVersion})`);
 
   // Create session
+  const acpMcpServers = (mcpServers ?? []).map(toAcpMcpServer);
+  if (acpMcpServers.length > 0) {
+    log(`Loading ${acpMcpServers.length} MCP server(s): ${acpMcpServers.map((s) => s.name).join(", ")}`);
+  }
   log("Creating ACP session...");
   const sessionResult = await connection.newSession({
     cwd,
-    mcpServers: [],
+    mcpServers: acpMcpServers,
   });
   log(`ACP session created: ${sessionResult.sessionId}`);
 

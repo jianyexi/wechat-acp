@@ -266,6 +266,7 @@ async function main(): Promise<void> {
     Object.assign(config.wechat, fileConfig.wechat ?? {});
     Object.assign(config.agent, fileConfig.agent ?? {});
     Object.assign(config.agents, fileConfig.agents ?? {});
+    if (fileConfig.mcpServers) config.mcpServers = fileConfig.mcpServers;
     Object.assign(config.session, fileConfig.session ?? {});
     Object.assign(config.daemon, fileConfig.daemon ?? {});
     Object.assign(config.storage, fileConfig.storage ?? {});

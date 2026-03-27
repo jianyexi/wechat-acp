@@ -61,6 +61,19 @@ export const BUILT_IN_AGENTS: Record<string, AgentPreset> = {
   },
 };
 
+/**
+ * MCP server configuration — maps directly to the ACP McpServer types.
+ *
+ * Stdio example:
+ *   { "name": "my-tool", "command": "npx", "args": ["-y", "my-mcp-server"] }
+ *
+ * HTTP/SSE example:
+ *   { "name": "remote-tool", "type": "http", "url": "https://...", "headers": [] }
+ */
+export type McpServerConfig =
+  | { name: string; command: string; args?: string[]; env?: Record<string, string> }
+  | { name: string; type: "http" | "sse"; url: string; headers?: Record<string, string> };
+
 export interface WeChatAcpConfig {
   wechat: {
     baseUrl: string;
@@ -76,6 +89,8 @@ export interface WeChatAcpConfig {
     showThoughts: boolean;
   };
   agents: Record<string, AgentPreset>;
+  /** MCP servers (skills/tools) to load into every agent session. */
+  mcpServers: McpServerConfig[];
   session: {
     idleTimeoutMs: number;
     maxConcurrentUsers: number;
@@ -110,6 +125,7 @@ export function defaultConfig(): WeChatAcpConfig {
       showThoughts: false,
     },
     agents: { ...BUILT_IN_AGENTS },
+    mcpServers: [],
     session: {
       idleTimeoutMs: 1440 * 60_000, // 24 hours
       maxConcurrentUsers: 10,

@@ -6,6 +6,7 @@ export { WeChatAcpBridge } from "./bridge.js";
 export type {
 	AgentCommandConfig,
 	AgentPreset,
+	McpServerConfig,
 	ResolvedAgentConfig,
 	WeChatAcpConfig,
 } from "./config.js";
